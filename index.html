@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>排班轉換工具</title>
+    <title>夙夙排班分配表轉換工具</title>
     <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.3.0/exceljs.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
@@ -32,17 +32,17 @@
 
 <div class="container">
 
-    <h1>三軍總醫院北投分院</h1>
+    <h1>三總北投分院</h1>
     <h2>護理科門診排班轉換工具</h2>
 
     <div id="messageArea"></div>
 
     <form id="uploadForm">
 
-        <label>步驟 1：診次設定（請上傳僅A欄位有診次別的.xlsx檔）</label>
+        <label>步驟 1：診別設定（請上傳僅A欄位有診次別的.xlsx檔）</label>
         <div id="clinicStatus"></div>
         <input type="file" id="clinicFile" accept=".xlsx">
-        <div class="note">第一次使用必須上傳，之後會自動記憶在瀏覽器中。</div>
+        <div class="note">第一次使用必須上傳，之後會自動記憶；若未更改診別項目則不用重新上傳。</div>
 
         <label>步驟 2：上傳預轉換的區間班表 (排班設定檔.xlsx)</label>
         <input type="file" id="scheduleFile" accept=".xlsx" required>
@@ -57,7 +57,7 @@
             </div>
         </div>
 
-        <div id="doneMessage">檔案已成功生成並開始下載！</div>
+        <div id="doneMessage">檔案已成功轉換並開始下載！</div>
 
     </form>
 
@@ -523,4 +523,5 @@
 </script>
 
 </body>
+
 </html>
