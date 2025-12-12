@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>夙夙排班專用</title>
+    <title>排班轉換工具</title>
     <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.3.0/exceljs.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
@@ -32,17 +32,17 @@
 
 <div class="container">
 
-    <h1>三總北投分院</h1>
+    <h1>三軍總醫院北投分院</h1>
     <h2>護理科門診排班轉換工具</h2>
 
     <div id="messageArea"></div>
 
     <form id="uploadForm">
 
-        <label>步驟 1：診別設定（請上傳僅A欄位有診次別的.xlsx檔）</label>
+        <label>步驟 1：診次設定（請上傳僅A欄位有診次別的.xlsx檔）</label>
         <div id="clinicStatus"></div>
         <input type="file" id="clinicFile" accept=".xlsx">
-        <div class="note">第一次使用必須上傳，之後會自動記憶；若未更改診別項目則不用重新上傳。</div>
+        <div class="note">第一次使用必須上傳，之後會自動記憶在瀏覽器中。</div>
 
         <label>步驟 2：上傳預轉換的區間班表 (排班設定檔.xlsx)</label>
         <input type="file" id="scheduleFile" accept=".xlsx" required>
@@ -57,7 +57,7 @@
             </div>
         </div>
 
-        <div id="doneMessage">檔案已成功轉換並開始下載！</div>
+        <div id="doneMessage">檔案已成功生成並開始下載！</div>
 
     </form>
 
@@ -65,7 +65,7 @@
 
 <script>
     // ----------------------------------------------------
-    // 核心常數設定 (複製自 Python 版本)
+    // 核心常數設定
     // ----------------------------------------------------
     const VALID_SHIFTS = [
         '8-12/1-5', '*8-12/1-5', '1-9', "1'-9'", "9-11'/13-15'",
@@ -84,7 +84,6 @@
     }
 
     function sortNamesByStroke(nameList) {
-        // 由於 JS 缺乏內建的中文筆畫排序，這裡使用 localeCompare 進行中文排序
         return nameList.sort((a, b) => a.localeCompare(b, 'zh-TW'));
     }
 
@@ -108,7 +107,7 @@
     }
 
     // ----------------------------------------------------
-    // 步驟 1：診次設定處理 (使用 Local Storage)
+    // 步驟 1：診次設定處理
     // ----------------------------------------------------
 
     function updateClinicStatus(clinicList) {
@@ -131,11 +130,8 @@
                     const workbook = XLSX.read(data, { type: 'array' });
                     const sheetName = workbook.SheetNames[0];
                     const worksheet = workbook.Sheets[sheetName];
-
-                    // 讀取 A 欄位 (index 0) 的資料
                     const json = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
                     
-                    // 假設診次都在 A 欄
                     let clinicList = json.map(row => row[0])
                                          .filter(val => val !== undefined && val !== null && String(val).trim() !== '')
                                          .map(String)
@@ -145,7 +141,6 @@
                         throw new Error("診次設定檔案沒有資料，請確認第一欄 (A欄) 是否包含診次名稱。");
                     }
                     
-                    // 儲存到 Local Storage
                     localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(clinicList));
                     resolve(clinicList);
                 } catch (error) {
@@ -161,279 +156,267 @@
     // ----------------------------------------------------
 
     async function generateSchedule(scheduleFile, clinicList) {
-    return new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = async (e) => {
-            try {
-                const data = new Uint8Array(e.target.result);
-                // 增加 { cellDates: true } 讓 SheetJS 正確解析日期
-                const workbook = XLSX.read(data, { type: 'array', cellDates: true }); 
-                const sheetName = workbook.SheetNames[0];
-                const worksheet = workbook.Sheets[sheetName];
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = async (e) => {
+                try {
+                    const data = new Uint8Array(e.target.result);
+                    // 使用 cellDates: true 讓 SheetJS 盡可能解析日期
+                    const workbook = XLSX.read(data, { type: 'array', cellDates: true }); 
+                    const sheetName = workbook.SheetNames[0];
+                    const worksheet = workbook.Sheets[sheetName];
 
-                // 讀取 Excel：設定 header: 1 來獲取一個陣列的陣列 (rows)，方便定位第二列的標頭
-                const rawData = XLSX.utils.sheet_to_json(worksheet, { header: 1, raw: false }); 
-                
-                if (rawData.length < 2) {
-                    throw new Error("排班檔案內容不足，請確保檔案包含表頭和資料。");
-                }
-
-                // 定位真正的 Header (班表檔的第二列)
-                const headerRow = rawData[1];
-                const dataRows = rawData.slice(2);
-                
-                let nameCol = -1;
-                let dateCols = [];
-                const processedRows = [];
-
-                // 找出中文姓名欄位和所有日期欄位
-                headerRow.forEach((col, index) => {
-                    // 清理欄位名稱，移除換行符號並去除空白
-                    const colStr = String(col).replace(/\n/g, '').trim(); 
+                    // raw: false 會將日期轉為格式化字串，這對於表頭處理比較安全
+                    const rawData = XLSX.utils.sheet_to_json(worksheet, { header: 1, raw: false }); 
                     
-                    if (colStr === '中文姓名') {
-                        nameCol = index;
-                    } else if (colStr.includes('202') || (col instanceof Date && !isNaN(col))) { 
-                        // 修正: 接受包含 '202' 的字串日期或已經被解析為 Date 物件的日期
-                        dateCols.push({ index: index, rawName: colStr, dateObj: col instanceof Date ? col : null });
+                    if (rawData.length < 2) {
+                        throw new Error("排班檔案內容不足，請確保檔案包含表頭和資料。");
                     }
-                });
 
-                if (nameCol === -1) {
-                    throw new Error("排班檔案格式錯誤：未找到 '中文姓名' 欄位。");
-                }
-                if (dateCols.length === 0) {
-                     throw new Error("排班檔案格式錯誤：未偵測到日期欄位 (需包含 '202' 或被識別為日期)。");
-                }
-
-                // 數據熔化 (Wide to Long)
-                dataRows.forEach(row => {
-                    const name = row[nameCol];
-                    if (!name || String(name).trim() === '') return;
+                    // 第二列為真正的 Header
+                    const headerRow = rawData[1];
+                    const dataRows = rawData.slice(2);
                     
-                    dateCols.forEach(dCol => {
-                        const shift = row[dCol.index];
-                        const finalShift = cleanShiftName(shift);
-                        
-                        if (!finalShift) return;
+                    let nameCol = -1;
+                    let dateCols = [];
+                    const processedRows = [];
 
-                        let dt;
-                        if (dCol.dateObj) {
-                            dt = dCol.dateObj;
-                        } else {
-                            // 解析日期 (如果它是字串格式)
-                            const dateStr = dCol.rawName.split('(')[0].trim();
-                            dt = new Date(dateStr + 'T00:00:00'); 
+                    // 找出中文姓名欄位和所有日期欄位
+                    headerRow.forEach((col, index) => {
+                        const colStr = String(col).replace(/\n/g, '').trim(); 
+                        
+                        if (colStr === '中文姓名') {
+                            nameCol = index;
+                        } else if (colStr.includes('202') || (col instanceof Date && !isNaN(col))) { 
+                            dateCols.push({ index: index, rawName: colStr, dateObj: col instanceof Date ? col : null });
                         }
-                        
-                        if (isNaN(dt.getTime())) return;
-                        
-                        // 計算 WeekKey (該週的星期一)
-                        const day = dt.getDay(); 
-                        const diff = dt.getDate() - day + (day === 0 ? -6 : 1); 
-                        const startOfWeek = new Date(dt);
-                        startOfWeek.setDate(diff);
-                        startOfWeek.setHours(0, 0, 0, 0); // 清理時間部分，確保日期唯一性
+                    });
 
-                        // 確保 dt 也是清理時間的
-                        const cleanDt = new Date(dt);
-                        cleanDt.setHours(0, 0, 0, 0);
+                    if (nameCol === -1) throw new Error("排班檔案格式錯誤：未找到 '中文姓名' 欄位。");
+                    if (dateCols.length === 0) throw new Error("排班檔案格式錯誤：未偵測到日期欄位 (需包含 '202')。");
 
-                        processedRows.push({
-                            Date: cleanDt,
-                            WeekKey: startOfWeek.getTime(), 
-                            Name: String(name).trim(),
-                            Shift: finalShift
+                    // 數據熔化 (Wide to Long)
+                    dataRows.forEach(row => {
+                        const name = row[nameCol];
+                        if (!name || String(name).trim() === '') return;
+                        
+                        dateCols.forEach(dCol => {
+                            const shift = row[dCol.index];
+                            const finalShift = cleanShiftName(shift);
+                            
+                            if (!finalShift) return;
+
+                            let dt;
+                            if (dCol.dateObj) {
+                                dt = dCol.dateObj;
+                            } else {
+                                // 解析日期 (如果是字串)
+                                // 修正 1: 將 '/' 替換為 '-' 並確保格式標準，避免不同瀏覽器解析錯誤
+                                let dateStr = dCol.rawName.split('(')[0].trim().replace(/\//g, '-');
+                                // 嘗試補上 T00:00:00 確保是當地時間的午夜
+                                dt = new Date(dateStr + 'T00:00:00'); 
+                            }
+                            
+                            if (isNaN(dt.getTime())) return;
+                            
+                            // 計算 WeekKey (該週的星期一)
+                            const day = dt.getDay(); 
+                            const diff = dt.getDate() - day + (day === 0 ? -6 : 1); 
+                            const startOfWeek = new Date(dt);
+                            startOfWeek.setDate(diff);
+                            startOfWeek.setHours(0, 0, 0, 0);
+
+                            const cleanDt = new Date(dt);
+                            cleanDt.setHours(0, 0, 0, 0);
+
+                            processedRows.push({
+                                Date: cleanDt,
+                                WeekKey: startOfWeek.getTime(), 
+                                Name: String(name).trim(),
+                                Shift: finalShift
+                            });
                         });
                     });
-                });
-                
-                // ... (後續的 Excel 生成邏輯不變)
 
-                if (processedRows.length === 0) {
-                    throw new Error("處理後無有效排班資料。");
-                }
+                    if (processedRows.length === 0) throw new Error("處理後無有效排班資料。");
 
-                // 依 WeekKey 分組
-                const dataByWeek = processedRows.reduce((acc, row) => {
-                    const key = row.WeekKey;
-                    if (!acc[key]) acc[key] = [];
-                    acc[key].push(row);
-                    return acc;
-                }, {});
+                    // 依 WeekKey 分組
+                    const dataByWeek = processedRows.reduce((acc, row) => {
+                        const key = row.WeekKey;
+                        if (!acc[key]) acc[key] = [];
+                        acc[key].push(row);
+                        return acc;
+                    }, {});
 
-                // ---------------- 產生 Excel ----------------
-                const workbookWriter = new ExcelJS.Workbook();
-                const alignCenter = { horizontal: 'center', vertical: 'middle', wrapText: true };
-                const cellBorder = { style: 'thin' };
-                const fullBorder = { top: cellBorder, left: cellBorder, bottom: cellBorder, right: cellBorder };
+                    // ---------------- 產生 Excel ----------------
+                    const workbookWriter = new ExcelJS.Workbook();
+                    const alignCenter = { horizontal: 'center', vertical: 'middle', wrapText: true };
+                    const cellBorder = { style: 'thin' };
+                    const fullBorder = { top: cellBorder, left: cellBorder, bottom: cellBorder, right: cellBorder };
+                    const titleFont = { name: '標楷體', size: 14, bold: true };
+                    const contentFont = { name: '標楷體', size: 10 };
 
-                // 字體設定
-                const titleFont = { name: '標楷體', size: 14, bold: true };
-                const contentFont = { name: '標楷體', size: 10 };
+                    const weekKeys = Object.keys(dataByWeek).sort();
 
-                const weekKeys = Object.keys(dataByWeek).sort();
+                    for (const weekKeyStr of weekKeys) {
+                        const weekStart = new Date(parseInt(weekKeyStr));
+                        const weekEnd = new Date(weekStart);
+                        weekEnd.setDate(weekStart.getDate() + 6);
 
-                for (const weekKeyStr of weekKeys) {
-                    const weekStart = new Date(parseInt(weekKeyStr));
-                    const weekEnd = new Date(weekStart);
-                    weekEnd.setDate(weekStart.getDate() + 6);
+                        const sheetTitle = `${(weekStart.getMonth() + 1).toString().padStart(2, '0')}${weekStart.getDate().toString().padStart(2, '0')}-${(weekEnd.getMonth() + 1).toString().padStart(2, '0')}${weekEnd.getDate().toString().padStart(2, '0')}`;
+                        const ws = workbookWriter.addWorksheet(sheetTitle);
+                        const weekData = dataByWeek[weekKeyStr];
 
-                    const sheetTitle = `${(weekStart.getMonth() + 1).toString().padStart(2, '0')}${weekStart.getDate().toString().padStart(2, '0')}-${(weekEnd.getMonth() + 1).toString().padStart(2, '0')}${weekEnd.getDate().toString().padStart(2, '0')}`;
-                    const ws = workbookWriter.addWorksheet(sheetTitle);
-                    const weekData = dataByWeek[weekKeyStr];
-
-                    // 設定欄寬
-                    ws.getColumn(1).width = 14; 
-                    for (let i = 2; i <= 15; i += 2) {
-                        ws.getColumn(i).width = 12; // 姓名
-                        ws.getColumn(i + 1).width = 8; // 診次
-                    }
-
-                    // A. 大標題 (Row 1)
-                    ws.mergeCells('A1:O1');
-                    ws.getCell('A1').value = "三軍總醫院_醫療部護理科門診_工作分配表";
-                    ws.getCell('A1').alignment = alignCenter;
-                    ws.getCell('A1').font = titleFont;
-
-                    // B. 表頭 (Row 2-4)
-                    ws.mergeCells('A2:A4');
-                    ws.getCell('A2').value = "班別";
-                    ws.getCell('A2').alignment = alignCenter;
-                    ws.getCell('A2').font = contentFont;
-                    ws.getCell('A2').border = fullBorder;
-
-                    const daysInWeek = Array(7).fill(0).map((_, i) => {
-                        const d = new Date(weekStart);
-                        d.setDate(weekStart.getDate() + i);
-                        d.setHours(0, 0, 0, 0); // 確保與數據中的日期匹配
-                        return d;
-                    });
-
-                    const dateColMap = {};
-                    let colIdx = 2;
-
-                    daysInWeek.forEach(d => {
-                        const dayStr = d.toISOString().substring(0, 10);
-                        const wkStr = getChineseWeekday(d);
-                        
-                        // Row 2: 日期
-                        ws.mergeCells(2, colIdx, 2, colIdx + 1);
-                        ws.getCell(2, colIdx).value = dayStr;
-                        ws.getCell(2, colIdx).alignment = alignCenter;
-                        ws.getCell(2, colIdx).font = contentFont;
-
-                        // Row 3: 星期
-                        ws.mergeCells(3, colIdx, 3, colIdx + 1);
-                        ws.getCell(3, colIdx).value = wkStr;
-                        ws.getCell(3, colIdx).alignment = alignCenter;
-                        ws.getCell(3, colIdx).font = contentFont;
-
-                        // Row 4: 姓名 / 診次
-                        ws.getCell(4, colIdx).value = "姓名";
-                        ws.getCell(4, colIdx + 1).value = "診次";
-                        ws.getCell(4, colIdx).alignment = alignCenter;
-                        ws.getCell(4, colIdx + 1).alignment = alignCenter;
-                        ws.getCell(4, colIdx).font = contentFont;
-                        ws.getCell(4, colIdx + 1).font = contentFont;
-
-                        // 設定表頭邊框
-                        for (let r = 2; r <= 4; r++) {
-                            ws.getCell(r, colIdx).border = fullBorder;
-                            ws.getCell(r, colIdx + 1).border = fullBorder;
+                        ws.getColumn(1).width = 14; 
+                        for (let i = 2; i <= 15; i += 2) {
+                            ws.getColumn(i).width = 12; 
+                            ws.getColumn(i + 1).width = 8; 
                         }
-                        
-                        dateColMap[d.toDateString()] = colIdx;
-                        colIdx += 2;
-                    });
-                    
-                    // C. 內容填入
-                    let shifts = [...new Set(weekData.map(row => row.Shift))];
-                    shifts.sort();
-                    if (shifts.includes('R')) {
-                        shifts = ['R', ...shifts.filter(s => s !== 'R')];
-                    }
-                    
-                    const dv = {
-                        type: 'list',
-                        formulae: [`"${clinicList.join(',')}"`],
-                        allowBlank: true
-                    };
-                    
-                    let curRow = 5;
 
-                    for (const shift of shifts) {
-                        let maxRows = 1;
-                        const peopleByDay = {};
+                        // A. 大標題
+                        ws.mergeCells('A1:O1');
+                        ws.getCell('A1').value = "三軍總醫院_醫療部護理科門診_工作分配表";
+                        ws.getCell('A1').alignment = alignCenter;
+                        ws.getCell('A1').font = titleFont;
+
+                        // B. 表頭
+                        ws.mergeCells('A2:A4');
+                        ws.getCell('A2').value = "班別";
+                        ws.getCell('A2').alignment = alignCenter;
+                        ws.getCell('A2').font = contentFont;
+                        ws.getCell('A2').border = fullBorder;
+
+                        const daysInWeek = Array(7).fill(0).map((_, i) => {
+                            const d = new Date(weekStart);
+                            d.setDate(weekStart.getDate() + i);
+                            d.setHours(0, 0, 0, 0);
+                            return d;
+                        });
+
+                        const dateColMap = {};
+                        let colIdx = 2;
 
                         daysInWeek.forEach(d => {
-                             // 使用 toDateString() 進行日期匹配，確保只比對年月日
-                            const names = weekData.filter(r => r.Shift === shift && r.Date.toDateString() === d.toDateString())
-                                                  .map(r => r.Name);
-                            const sortedNames = sortNamesByStroke(names);
-                            peopleByDay[d.toDateString()] = sortedNames;
-                            maxRows = Math.max(maxRows, sortedNames.length);
+                            // 修正 2: 解決日期不正確的問題
+                            // 不要使用 toISOString()，因為它會轉換成 UTC 導致日期少一天 (GMT+8 -> UTC)
+                            // 改用本地時間的方法 getFullYear/getMonth/getDate
+                            const year = d.getFullYear();
+                            const month = (d.getMonth() + 1).toString().padStart(2, '0');
+                            const date = d.getDate().toString().padStart(2, '0');
+                            const dayStr = `${year}-${month}-${date}`;
+
+                            const wkStr = getChineseWeekday(d);
+                            
+                            // Row 2: 日期
+                            ws.mergeCells(2, colIdx, 2, colIdx + 1);
+                            ws.getCell(2, colIdx).value = dayStr;
+                            ws.getCell(2, colIdx).alignment = alignCenter;
+                            ws.getCell(2, colIdx).font = contentFont;
+
+                            // Row 3: 星期
+                            ws.mergeCells(3, colIdx, 3, colIdx + 1);
+                            ws.getCell(3, colIdx).value = wkStr;
+                            ws.getCell(3, colIdx).alignment = alignCenter;
+                            ws.getCell(3, colIdx).font = contentFont;
+
+                            // Row 4: 姓名 / 診次
+                            ws.getCell(4, colIdx).value = "姓名";
+                            ws.getCell(4, colIdx + 1).value = "診次";
+                            ws.getCell(4, colIdx).alignment = alignCenter;
+                            ws.getCell(4, colIdx + 1).alignment = alignCenter;
+                            ws.getCell(4, colIdx).font = contentFont;
+                            ws.getCell(4, colIdx + 1).font = contentFont;
+
+                            for (let r = 2; r <= 4; r++) {
+                                ws.getCell(r, colIdx).border = fullBorder;
+                                ws.getCell(r, colIdx + 1).border = fullBorder;
+                            }
+                            
+                            dateColMap[d.toDateString()] = colIdx;
+                            colIdx += 2;
                         });
-
-                        const startRow = curRow;
-
-                        for (let i = 0; i < maxRows; i++) {
-                            daysInWeek.forEach(d => {
-                                const ccol = dateColMap[d.toDateString()];
-                                const names = peopleByDay[d.toDateString()] || [];
-                                
-                                const cellName = ws.getCell(curRow, ccol);
-                                const cellClinic = ws.getCell(curRow, ccol + 1);
-
-                                if (i < names.length) {
-                                    cellName.value = names[i];
-                                    cellClinic.dataValidation = dv; // 應用下拉選單
-                                }
-
-                                // 應用樣式與字體
-                                cellName.border = fullBorder;
-                                cellClinic.border = fullBorder;
-                                cellName.alignment = alignCenter;
-                                cellClinic.alignment = alignCenter;
-                                cellName.font = contentFont;
-                                cellClinic.font = contentFont;
-                            });
-                            curRow++;
+                        
+                        // C. 內容填入
+                        let shifts = [...new Set(weekData.map(row => row.Shift))];
+                        shifts.sort();
+                        if (shifts.includes('R')) {
+                            shifts = ['R', ...shifts.filter(s => s !== 'R')];
                         }
                         
-                        // 合併左側班別名稱 (A欄)
-                        ws.mergeCells(startRow, 1, curRow - 1, 1);
-                        ws.getCell(startRow, 1).value = shift;
-                        ws.getCell(startRow, 1).alignment = alignCenter;
-                        ws.getCell(startRow, 1).font = contentFont;
-                        // 確保邊框完整
-                        for (let r = startRow; r < curRow; r++) {
-                            ws.getCell(r, 1).border = fullBorder;
+                        const dv = {
+                            type: 'list',
+                            formulae: [`"${clinicList.join(',')}"`],
+                            allowBlank: true
+                        };
+                        
+                        let curRow = 5;
+
+                        for (const shift of shifts) {
+                            let maxRows = 1;
+                            const peopleByDay = {};
+
+                            daysInWeek.forEach(d => {
+                                const names = weekData.filter(r => r.Shift === shift && r.Date.toDateString() === d.toDateString())
+                                                      .map(r => r.Name);
+                                const sortedNames = sortNamesByStroke(names);
+                                peopleByDay[d.toDateString()] = sortedNames;
+                                maxRows = Math.max(maxRows, sortedNames.length);
+                            });
+
+                            const startRow = curRow;
+
+                            for (let i = 0; i < maxRows; i++) {
+                                daysInWeek.forEach(d => {
+                                    const ccol = dateColMap[d.toDateString()];
+                                    const names = peopleByDay[d.toDateString()] || [];
+                                    
+                                    const cellName = ws.getCell(curRow, ccol);
+                                    const cellClinic = ws.getCell(curRow, ccol + 1);
+
+                                    if (i < names.length) {
+                                        cellName.value = names[i];
+                                        cellClinic.dataValidation = dv; 
+                                    }
+
+                                    cellName.border = fullBorder;
+                                    cellClinic.border = fullBorder;
+                                    cellName.alignment = alignCenter;
+                                    cellClinic.alignment = alignCenter;
+                                    cellName.font = contentFont;
+                                    cellClinic.font = contentFont;
+                                });
+                                curRow++;
+                            }
+                            
+                            ws.mergeCells(startRow, 1, curRow - 1, 1);
+                            ws.getCell(startRow, 1).value = shift;
+                            ws.getCell(startRow, 1).alignment = alignCenter;
+                            ws.getCell(startRow, 1).font = contentFont;
+                            for (let r = startRow; r < curRow; r++) {
+                                ws.getCell(r, 1).border = fullBorder;
+                            }
                         }
                     }
+
+                    const buffer = await workbookWriter.xlsx.writeBuffer();
+                    const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+                    saveAs(blob, "三軍總醫院_醫療部護理科門診_工作分配表_完成檔.xlsx");
+                    
+                    resolve();
+
+                } catch (error) {
+                    reject(error);
                 }
-
-                // 輸出檔案
-                const buffer = await workbookWriter.xlsx.writeBuffer();
-                const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
-                saveAs(blob, "三軍總醫院_醫療部護理科門診_工作分配表_完成檔.xlsx");
-                
-                resolve();
-
-            } catch (error) {
-                reject(error);
-            }
-        };
-        reader.readAsArrayBuffer(scheduleFile);
-    });
-}
+            };
+            reader.readAsArrayBuffer(scheduleFile);
+        });
+    }
 
     // ----------------------------------------------------
     // 主程式碼與事件處理
     // ----------------------------------------------------
 
     document.addEventListener('DOMContentLoaded', () => {
-        // 頁面載入時檢查 Local Storage
         const storedClinic = localStorage.getItem(LOCAL_STORAGE_KEY);
         if (storedClinic) {
             try {
@@ -447,7 +430,6 @@
              updateClinicStatus(null);
         }
 
-        // 監聽診次檔案上傳 (步驟 1)
         document.getElementById('clinicFile').addEventListener('change', async (event) => {
             const file = event.target.files[0];
             if (!file) return;
@@ -463,7 +445,6 @@
         });
 
 
-        // 監聽表單提交 (步驟 2)
         document.getElementById('uploadForm').addEventListener('submit', async (event) => {
             event.preventDefault();
             
@@ -489,12 +470,10 @@
                 return;
             }
             
-            // 啟動進度條 (視覺效果)
             startProgressBar();
 
             try {
                 await generateSchedule(scheduleFile, clinicList);
-                // 下載成功後，讓進度條跑滿，顯示完成訊息
                 document.getElementById('progressFill').style.width = '100%';
                 setTimeout(() => {
                     document.getElementById('progressContainer').style.display = 'none';
@@ -502,13 +481,11 @@
                 }, 500);
 
             } catch (error) {
-                // 處理失敗
                 document.getElementById('progressContainer').style.display = 'none';
                 displayMessage('error', `轉換處理失敗：${error.message}`);
             }
         });
         
-        // 進度條效果 (僅視覺)
         function startProgressBar() {
             let container = document.getElementById("progressContainer");
             let bar = document.getElementById("progressFill");
@@ -523,6 +500,4 @@
 </script>
 
 </body>
-
 </html>
-
