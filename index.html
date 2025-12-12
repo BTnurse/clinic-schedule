@@ -1,501 +1,741 @@
 <!DOCTYPE html>
 <html lang="zh-TW">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>排班轉換工具</title>
-    <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.3.0/exceljs.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
+ <meta charset="UTF-8">
+ <meta name="viewport" content="width=device-width, initial-scale=1.0">
+ <title>夙夙專用門診排班轉換工具</title>
+ <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
+ <script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.3.0/exceljs.min.js"></script>
+ <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
 
-    <style>
-        body{font-family:'微軟正黑體', sans-serif; background:#f4f7f6; padding:20px;}
-        .container{max-width:750px; margin:auto; background:white; padding:30px; border-radius:10px;
-                   box-shadow:0 4px 10px rgba(0,0,0,0.1);}
-        h1,h2{text-align:center; color:#003366;}
-        label{font-weight:bold; margin-top:20px; display:block;}
-        input[type=file]{width:100%; padding:10px; border:1px solid #ccc; border-radius:6px; background:#eef0f3;}
-        button{margin-top:25px; width:100%; padding:12px; background:#0066cc; color:white;
-               font-size:16px; border:none; border-radius:6px; cursor: pointer;}
-        button:hover{background:#004c99;}
-        .error{margin-top:15px; padding:10px; background:#ffe5e5; border-left:4px solid #cc0000; color:#990000;}
-        .note{font-size:12px; color:#666;}
-        .success{padding:10px; background:#e6ffe6; border-left:4px solid #2d862d; color:#1b5e20;}
+ <style>
+  body{font-family:'微軟正黑體', sans-serif; background:#f4f7f6; padding:20px;}
+  .container{max-width:850px; margin:auto; background:white; padding:30px; border-radius:10px;
+     box-shadow:0 4px 10px rgba(0,0,0,0.1);}
+  h1,h2{text-align:center; color:#003366;}
+  label{font-weight:bold; margin-top:20px; display:block;}
+  input[type=file]{width:100%; padding:10px; border:1px solid #ccc; border-radius:6px; background:#eef0f3;}
+  button{margin-top:25px; width:100%; padding:12px; background:#0066cc; color:white;
+    font-size:16px; border:none; border-radius:6px; cursor: pointer;}
+  button:hover{background:#004c99;}
+  .error{margin-top:15px; padding:10px; background:#ffe5e5; border-left:4px solid #cc0000; color:#990000;}
+  .note{font-size:12px; color:#666;}
+  .success{padding:10px; background:#e6ffe6; border-left:4px solid #2d862d; color:#1b5e20;}
 
-        #progressContainer{ display:none; margin-top:25px;}
-        .progress-bar { width: 100%; background-color: #ddd; border-radius: 6px; overflow: hidden;}
-        .progress-bar-fill { height: 18px; width: 0%; background-color: #4CAF50; transition: width 0.25s ease-out;}
-        #doneMessage { display:none; margin-top:20px; padding:10px; background:#e6ffe6; border-left:4px solid #2d862d; text-align:center; font-size:15px; color:#1b5e20;}
-    </style>
+  #progressContainer{ display:none; margin-top:25px;}
+  .progress-bar { width: 100%; background-color: #ddd; border-radius: 6px; overflow: hidden;}
+  .progress-bar-fill { height: 18px; width: 0%; background-color: #4CAF50; transition: width 0.25s ease-out;}
+  #doneMessage { display:none; margin-top:20px; padding:10px; background:#e6ffe6; border-left:4px solid #2d862d; text-align:center; font-size:15px; color:#1b5e20;}
+ 
+  .mode-selection {
+   display: grid;
+   grid-template-columns: 1fr 1fr;
+   gap: 20px;
+   margin-bottom: 20px;
+   padding: 15px;
+   border: 1px solid #ccc;
+   border-radius: 6px;
+  }
+  .mode-selection label {
+   font-weight: normal;
+   margin-top: 0;
+   cursor: pointer;
+   padding: 10px;
+   border: 1px solid transparent;
+   border-radius: 4px;
+  }
+  .mode-selection input[type="radio"]:checked + label {
+   border: 1px solid #0066cc;
+   background-color: #e6f7ff;
+  }
+  .mode-selection label input[type="radio"] {
+   margin-right: 5px;
+  }
+ </style>
 </head>
 <body>
 
 <div class="container">
 
-    <h1>三軍總醫院北投分院</h1>
-    <h2>護理科門診排班轉換工具</h2>
+ <h1>三軍總醫院北投分院</h1>
+ <h2>護理科門診排班轉換工具</h2>
 
-    <div id="messageArea"></div>
+ <div id="messageArea"></div>
 
-    <form id="uploadForm">
+ <form id="uploadForm">
 
-        <label>步驟 1：診次設定（請上傳僅A欄位有診次別的.xlsx檔）</label>
-        <div id="clinicStatus"></div>
-        <input type="file" id="clinicFile" accept=".xlsx">
-        <div class="note">第一次使用必須上傳，之後會自動記憶在瀏覽器中。</div>
+  <label>步驟 1：診次設定（請上傳僅A欄位有診次別的.xlsx檔）</label>
+  <div id="clinicStatus"></div>
+  <input type="file" id="clinicFile" accept=".xlsx">
+  <div class="note">第一次使用必須上傳，之後會自動記憶；若未變更診別，不用重新上傳。</div>
 
-        <label>步驟 2：上傳預轉換的區間班表 (排班設定檔.xlsx)</label>
-        <input type="file" id="scheduleFile" accept=".xlsx" required>
-        <div class="note">請確保班表第二列為日期標頭。</div>
+  <label>步驟 2：上傳預轉換的區間班表 (排班設定檔.xlsx)</label>
+  <input type="file" id="scheduleFile" accept=".xlsx" required>
+ 
+  <label style="margin-top: 30px;">步驟 3：選擇分配表提取模式（擇一執行）</label>
+ 
+  <div class="mode-selection">
+   <label for="mode_auto">
+    <input type="radio" name="extractionMode" value="auto" id="mode_auto" checked>
+    <span style="font-weight: bold;">月班表模式</span>
+    <div class="note" style="margin-top: 5px;">依日期區間，以週間日期分頁。</div>
+   </label>
+  
+   <label for="mode_fixed">
+    <input type="radio" name="extractionMode" value="fixed" id="mode_fixed">
+    <span style="font-weight: bold;">週班表模式</span>
+    <div class="note" style="margin-top: 5px;">單週單頁。</div>
+   </label>
+  </div>
 
-        <button type="submit" id="convertBtn">開始轉換 → 下載 Excel</button>
+  <button type="submit" id="convertBtn">開始轉換 → 下載分配表</button>
 
-        <div id="progressContainer">
-            <div class="note">正在處理並產生工作分配表中，請稍候…</div>
-            <div class="progress-bar">
-                <div id="progressFill" class="progress-bar-fill"></div>
-            </div>
-        </div>
+  <div id="progressContainer">
+   <div class="note">正在處理並產生工作分配表中，請稍候…</div>
+   <div class="progress-bar">
+    <div id="progressFill" class="progress-bar-fill"></div>
+   </div>
+  </div>
 
-        <div id="doneMessage">檔案已成功生成並開始下載！</div>
+  <div id="doneMessage">檔案已成功生成並開始下載！</div>
 
-    </form>
+ </form>
 
 </div>
 
 <script>
-    // ----------------------------------------------------
-    // 核心常數設定
-    // ----------------------------------------------------
-    const VALID_SHIFTS = [
-        '8-12/1-5', '*8-12/1-5', '1-9', "1'-9'", "9-11'/13-15'",
-        '值N8-8(民)', '12-4/值4-8', '值D8-8(民)', "8'-12'/1'5'"
-    ];
-    const REST_SHIFTS = ['補休', '休息日', '例假日', '空班', '特別休假', '病假', '事假', '公假', '喪假'];
-    const LOCAL_STORAGE_KEY = 'clinic_list_data';
+ // ----------------------------------------------------
+ // 核心常數設定
+ // ----------------------------------------------------
+ const VALID_SHIFTS = [
+  '8-12/1-5', '*8-12/1-5', '1-9', "1'-9'", "9-11'/13-15'",
+  '值N8-8(民)', '12-4/值4-8', '值D8-8(民)', "8'-12'/1'5'"
+ ];
+ const REST_SHIFTS = ['補休', '休息日', '例假日', '空班', '特別休假', '病假', '事假', '公假', '喪假'];
+ const LOCAL_STORAGE_KEY = 'clinic_list_data';
 
-    // ----------------------------------------------------
-    // 工具函式
-    // ----------------------------------------------------
+ // ----------------------------------------------------
+ // 工具函式
+ // ----------------------------------------------------
 
-    function getChineseWeekday(date) {
-        const weekdays = ['日', '一', '二', '三', '四', '五', '六'];
-        return weekdays[date.getDay()];
+ function getChineseWeekday(date) {
+  const weekdays = ['日', '一', '二', '三', '四', '五', '六'];
+  return weekdays[date.getDay()];
+ }
+
+ function sortNamesByStroke(nameList) {
+  return nameList.sort((a, b) => a.localeCompare(b, 'zh-TW'));
+ }
+
+ function cleanShiftName(shift) {
+  if (!shift || ['nan', 'None', 'NaT', ''].includes(String(shift).trim())) {
+   return null;
+  }
+  // ★ MODIFICATION: 排除被解析為 Date 物件的資料 (滿足需求 3)
+  if (shift instanceof Date && !isNaN(shift.getTime())) {
+   return null;
+  }
+ 
+  shift = String(shift).trim();
+  if (VALID_SHIFTS.includes(shift)) {
+   return shift;
+  }
+  if (REST_SHIFTS.includes(shift)) {
+   return 'R';
+  }
+  return shift;
+ }
+
+ function displayMessage(type, content) {
+  const area = document.getElementById('messageArea');
+  area.innerHTML = `<div class="${type}">${content}</div>`;
+ }
+
+ // 判斷是否為日期格式的函數 (用於辨識表頭)
+ function isDateLike(val) {
+  const colStr = String(val).replace(/\n/g, '').trim();
+  return (val instanceof Date && !isNaN(val)) ||
+   colStr.includes('202') ||
+   /\d{1,2}[\/-]\d{1,2}/.test(colStr);
+ }
+
+ // 偵測預設年份
+ function detectDefaultYear(rawData) {
+  const strData = JSON.stringify(rawData);
+  const matchAD = strData.match(/202[4-6]/);
+  if (matchAD) return parseInt(matchAD[0]);
+ 
+  const matchROC = strData.match(/11[3-5]/);
+  if (matchROC) return parseInt(matchROC[0]) + 1911;
+
+  return new Date().getFullYear();
+ }
+
+ // 彈性解析日期
+ function parseDateFlexible(val, defaultYear) {
+  if (val instanceof Date) return val;
+ 
+  let s = String(val).split('(')[0].replace(/\n/g, '').trim().replace(/\//g, '-');
+ 
+  let d = new Date(s);
+  if (!isNaN(d.getTime()) && s.includes('20')) {
+   return d;
+  }
+
+  const match = s.match(/(\d{1,2})[-/](\d{1,2})/);
+  if (match) {
+   const m = parseInt(match[1], 10);
+   const day = parseInt(match[2], 10);
+   return new Date(defaultYear, m - 1, day);
+  }
+ 
+  return null;
+ }
+
+ // ----------------------------------------------------
+ // 步驟 1：診次設定處理
+ // ----------------------------------------------------
+
+ function updateClinicStatus(clinicList) {
+  const statusDiv = document.getElementById('clinicStatus');
+  if (clinicList && clinicList.length > 0) {
+   statusDiv.innerHTML = `<div class="success">✔ 已載入診次設定 (共 <strong>${clinicList.length}</strong> 項)</div>`;
+   document.getElementById('clinicFile').required = false;
+  } else {
+   statusDiv.innerHTML = '';
+   document.getElementById('clinicFile').required = true;
+  }
+ }
+
+ async function loadClinicList(file) {
+  return new Promise((resolve, reject) => {
+   const reader = new FileReader();
+   reader.onload = (e) => {
+    try {
+     const data = new Uint8Array(e.target.result);
+     const workbook = XLSX.read(data, { type: 'array' });
+     const sheetName = workbook.SheetNames[0];
+     const worksheet = workbook.Sheets[sheetName];
+     const json = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+    
+     let clinicList = json.map(row => row[0])
+          .filter(val => val !== undefined && val !== null && String(val).trim() !== '')
+          .map(String)
+          .map(s => s.trim());
+    
+     if (clinicList.length === 0) {
+      throw new Error("診次設定檔案沒有資料，請確認第一欄 (A欄) 是否包含診次名稱。");
+     }
+    
+     localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(clinicList));
+     resolve(clinicList);
+    } catch (error) {
+     reject(error);
     }
+   };
+   reader.readAsArrayBuffer(file);
+  });
+ }
 
-    function sortNamesByStroke(nameList) {
-        return nameList.sort((a, b) => a.localeCompare(b, 'zh-TW'));
-    }
+ // ----------------------------------------------------
+ // 步驟 2 & 3：核心轉換與生成 Excel (Modified)
+ // ----------------------------------------------------
 
-    function cleanShiftName(shift) {
-        if (!shift || ['nan', 'None', 'NaT', ''].includes(String(shift).trim())) {
-            return null;
+ async function generateSchedule(scheduleFile, clinicList, mode) {
+  return new Promise((resolve, reject) => {
+   const reader = new FileReader();
+   reader.onload = async (e) => {
+    try {
+     const data = new Uint8Array(e.target.result);
+     const workbook = XLSX.read(data, { type: 'array', cellDates: true });
+     const sheetName = workbook.SheetNames[0];
+     const worksheet = workbook.Sheets[sheetName];
+
+     const rawData = XLSX.utils.sheet_to_json(worksheet, { header: 1, raw: false });
+    
+     if (rawData.length < 2) {
+      throw new Error("排班檔案內容不足。");
+     }
+
+     // 1. 自動尋找 Header 列與姓名欄位
+     let headerRowIndex = -1;
+     let nameColIndex = -1;
+
+     // 掃描前 10 列尋找包含 "中文姓名" 或 "姓名" 的列
+     for (let r = 0; r < Math.min(rawData.length, 10); r++) {
+      const row = rawData[r];
+      if (!row) continue;
+      row.forEach((cell, idx) => {
+       const cleanCell = String(cell).replace(/\s/g,'');
+       if (cleanCell.includes('姓名') || cleanCell.includes('中文姓名')) {
+        headerRowIndex = r;
+        nameColIndex = idx;
+       }
+      });
+      if (headerRowIndex !== -1) break;
+     }
+
+     if (headerRowIndex === -1 || nameColIndex === -1) {
+      throw new Error("無法在檔案前 10 列中找到「姓名」或「中文姓名」欄位。");
+     }
+
+     const defaultYear = detectDefaultYear(rawData);
+
+     // 真正的表頭從找到的該列開始
+     const headerRow = rawData[headerRowIndex];
+    
+     let dateCols = [];
+     const processedRows = [];
+     let dataRows; // 宣告 dataRows
+
+     // --- 模式專屬的欄位偵測與資料列範圍界定 ---
+
+     if (mode === 'auto') {
+      // 模式 A: 彈性/自動偵測 (月班表模式)
+      let foundFirstDate = false;
+      headerRow.forEach((col, index) => {
+       const colStr = String(col).replace(/\n/g, '').trim();
+       const isDate = isDateLike(col);
+
+       // 排除所有統計/備註/合計欄位
+       if (colStr.includes('統計') || colStr.includes('備註') || colStr.includes('合計')) {
+        return;
+       }
+
+       // 只抓取姓名欄位之後的有效日期欄位
+       if (index > nameColIndex) {
+        if (isDate) {
+         foundFirstDate = true;
+         dateCols.push({ index: index, rawName: colStr, dateObj: col instanceof Date ? col : null });
+        } else if (foundFirstDate) {
+         // 找到第一個日期後，又遇到非日期欄位 (防止中間混入統計欄)
+         return;
         }
-        shift = String(shift).trim();
-        if (VALID_SHIFTS.includes(shift)) {
-            return shift;
-        }
-        if (REST_SHIFTS.includes(shift)) {
-            return 'R';
-        }
-        return shift;
-    }
+       }
+      });
+     
+      // 數據從表頭下一列開始 (原邏輯)
+      dataRows = rawData.slice(headerRowIndex + 1);
 
-    function displayMessage(type, content) {
-        const area = document.getElementById('messageArea');
-        area.innerHTML = `<div class="${type}">${content}</div>`;
-    }
+     } else if (mode === 'fixed') {
+      // 模式 B: 固定 H-N 鎖定 (週班表模式)
+      const MIN_COL_INDEX = 7; // H 欄 (索引從 0 開始)
+      const MAX_COL_INDEX = 13; // N 欄
 
-    // ----------------------------------------------------
-    // 步驟 1：診次設定處理
-    // ----------------------------------------------------
+      headerRow.forEach((col, index) => {
+       // 條件 1: 嚴格篩選欄位範圍 H (index 7) 到 N (index 13)
+       if (index < MIN_COL_INDEX || index > MAX_COL_INDEX) {
+        return;
+       }
+      
+       const colStr = String(col).replace(/\n/g, '').trim();
+      
+       // 條件 2: 排除所有統計/備註/合計欄位
+       if (colStr.includes('統計') || colStr.includes('備註') || colStr.includes('合計')) {
+        return;
+       }
 
-    function updateClinicStatus(clinicList) {
-        const statusDiv = document.getElementById('clinicStatus');
-        if (clinicList && clinicList.length > 0) {
-            statusDiv.innerHTML = `<div class="success">✔ 已載入診次設定 (共 <strong>${clinicList.length}</strong> 項)</div>`;
-            document.getElementById('clinicFile').required = false;
-        } else {
-            statusDiv.innerHTML = '';
-            document.getElementById('clinicFile').required = true;
-        }
-    }
+       // 條件 3: 確認是日期欄位
+       const isDate = isDateLike(col);
+       if (isDate) {
+        dateCols.push({ index: index, rawName: colStr, dateObj: col instanceof Date ? col : null });
+       }
+      });
 
-    async function loadClinicList(file) {
-        return new Promise((resolve, reject) => {
-            const reader = new FileReader();
-            reader.onload = (e) => {
-                try {
-                    const data = new Uint8Array(e.target.result);
-                    const workbook = XLSX.read(data, { type: 'array' });
-                    const sheetName = workbook.SheetNames[0];
-                    const worksheet = workbook.Sheets[sheetName];
-                    const json = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
-                    
-                    let clinicList = json.map(row => row[0])
-                                         .filter(val => val !== undefined && val !== null && String(val).trim() !== '')
-                                         .map(String)
-                                         .map(s => s.trim());
-                    
-                    if (clinicList.length === 0) {
-                        throw new Error("診次設定檔案沒有資料，請確認第一欄 (A欄) 是否包含診次名稱。");
-                    }
-                    
-                    localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(clinicList));
-                    resolve(clinicList);
-                } catch (error) {
-                    reject(error);
-                }
-            };
-            reader.readAsArrayBuffer(file);
-        });
-    }
+      // 鎖定抓取4-100列資料
+      dataRows = rawData.slice(3, 100);
+     }
 
-    // ----------------------------------------------------
-    // 步驟 2 & 3：核心轉換與生成 Excel
-    // ----------------------------------------------------
+     if (dateCols.length === 0) throw new Error(`未偵測到任何日期欄位，請確認您選擇的模式是否正確，或檔案內容有誤。`);
 
-    async function generateSchedule(scheduleFile, clinicList) {
-        return new Promise((resolve, reject) => {
-            const reader = new FileReader();
-            reader.onload = async (e) => {
-                try {
-                    const data = new Uint8Array(e.target.result);
-                    // 使用 cellDates: true 讓 SheetJS 盡可能解析日期
-                    const workbook = XLSX.read(data, { type: 'array', cellDates: true }); 
-                    const sheetName = workbook.SheetNames[0];
-                    const worksheet = workbook.Sheets[sheetName];
+     // 4. 數據熔化：只抓取日期欄位下方的班別數據
+     dataRows.forEach(row => {
+      const name = row[nameColIndex];
+      if (!name || String(name).trim() === '') return;
+     
+      dateCols.forEach(dCol => {
+       const shift = row[dCol.index];
+       const finalShift = cleanShiftName(shift);
+      
+       if (!finalShift) return;
 
-                    // raw: false 會將日期轉為格式化字串，這對於表頭處理比較安全
-                    const rawData = XLSX.utils.sheet_to_json(worksheet, { header: 1, raw: false }); 
-                    
-                    if (rawData.length < 2) {
-                        throw new Error("排班檔案內容不足，請確保檔案包含表頭和資料。");
-                    }
+       let dt;
+       if (dCol.dateObj) {
+        dt = dCol.dateObj;
+       } else {
+        dt = parseDateFlexible(dCol.rawName, defaultYear);
+       }
+      
+       if (!dt || isNaN(dt.getTime())) return;
+      
+       // 計算 WeekKey (該週的星期一)
+       const day = dt.getDay();
+       const diff = dt.getDate() - day + (day === 0 ? -6 : 1);
+       const startOfWeek = new Date(dt);
+       startOfWeek.setDate(diff);
+       startOfWeek.setHours(0, 0, 0, 0);
 
-                    // 第二列為真正的 Header
-                    const headerRow = rawData[1];
-                    const dataRows = rawData.slice(2);
-                    
-                    let nameCol = -1;
-                    let dateCols = [];
-                    const processedRows = [];
+       const cleanDt = new Date(dt);
+       cleanDt.setHours(0, 0, 0, 0);
 
-                    // 找出中文姓名欄位和所有日期欄位
-                    headerRow.forEach((col, index) => {
-                        const colStr = String(col).replace(/\n/g, '').trim(); 
-                        
-                        if (colStr === '中文姓名') {
-                            nameCol = index;
-                        } else if (colStr.includes('202') || (col instanceof Date && !isNaN(col))) { 
-                            dateCols.push({ index: index, rawName: colStr, dateObj: col instanceof Date ? col : null });
-                        }
-                    });
+       processedRows.push({
+        Date: cleanDt,
+        WeekKey: startOfWeek.getTime(),
+        Name: String(name).trim(),
+        Shift: finalShift
+       });
+      });
+     });
 
-                    if (nameCol === -1) throw new Error("排班檔案格式錯誤：未找到 '中文姓名' 欄位。");
-                    if (dateCols.length === 0) throw new Error("排班檔案格式錯誤：未偵測到日期欄位 (需包含 '202')。");
+     if (processedRows.length === 0) throw new Error("處理後無有效排班資料。");
+    
+     // 依 WeekKey 分組 (實現每週一分頁)
+     const dataByWeek = processedRows.reduce((acc, row) => {
+      const key = row.WeekKey;
+      if (!acc[key]) acc[key] = [];
+      acc[key].push(row);
+      return acc;
+     }, {});
 
-                    // 數據熔化 (Wide to Long)
-                    dataRows.forEach(row => {
-                        const name = row[nameCol];
-                        if (!name || String(name).trim() === '') return;
-                        
-                        dateCols.forEach(dCol => {
-                            const shift = row[dCol.index];
-                            const finalShift = cleanShiftName(shift);
-                            
-                            if (!finalShift) return;
+     // ---------------- 產生 Excel ----------------
+     const workbookWriter = new ExcelJS.Workbook();
+     const alignCenter = { horizontal: 'center', vertical: 'middle', wrapText: true };
+     const cellBorder = { style: 'thin' };
+     const fullBorder = { top: cellBorder, left: cellBorder, bottom: cellBorder, right: cellBorder };
+     const titleFont = { name: '標楷體', size: 16, bold: true };
+     const contentFont = { name: '標楷體', size: 11 };
 
-                            let dt;
-                            if (dCol.dateObj) {
-                                dt = dCol.dateObj;
-                            } else {
-                                // 解析日期 (如果是字串)
-                                // 修正 1: 將 '/' 替換為 '-' 並確保格式標準，避免不同瀏覽器解析錯誤
-                                let dateStr = dCol.rawName.split('(')[0].trim().replace(/\//g, '-');
-                                // 嘗試補上 T00:00:00 確保是當地時間的午夜
-                                dt = new Date(dateStr + 'T00:00:00'); 
-                            }
-                            
-                            if (isNaN(dt.getTime())) return;
-                            
-                            // 計算 WeekKey (該週的星期一)
-                            const day = dt.getDay(); 
-                            const diff = dt.getDate() - day + (day === 0 ? -6 : 1); 
-                            const startOfWeek = new Date(dt);
-                            startOfWeek.setDate(diff);
-                            startOfWeek.setHours(0, 0, 0, 0);
+     const weekKeys = Object.keys(dataByWeek).sort();
 
-                            const cleanDt = new Date(dt);
-                            cleanDt.setHours(0, 0, 0, 0);
+     // 迴圈處理每一週，生成一個工作表
+     for (const weekKeyStr of weekKeys) {
+      const weekStart = new Date(parseInt(weekKeyStr));
+      const weekEnd = new Date(weekStart);
+      weekEnd.setDate(weekStart.getDate() + 6);
 
-                            processedRows.push({
-                                Date: cleanDt,
-                                WeekKey: startOfWeek.getTime(), 
-                                Name: String(name).trim(),
-                                Shift: finalShift
-                            });
-                        });
-                    });
-
-                    if (processedRows.length === 0) throw new Error("處理後無有效排班資料。");
-
-                    // 依 WeekKey 分組
-                    const dataByWeek = processedRows.reduce((acc, row) => {
-                        const key = row.WeekKey;
-                        if (!acc[key]) acc[key] = [];
-                        acc[key].push(row);
-                        return acc;
-                    }, {});
-
-                    // ---------------- 產生 Excel ----------------
-                    const workbookWriter = new ExcelJS.Workbook();
-                    const alignCenter = { horizontal: 'center', vertical: 'middle', wrapText: true };
-                    const cellBorder = { style: 'thin' };
-                    const fullBorder = { top: cellBorder, left: cellBorder, bottom: cellBorder, right: cellBorder };
-                    const titleFont = { name: '標楷體', size: 14, bold: true };
-                    const contentFont = { name: '標楷體', size: 10 };
-
-                    const weekKeys = Object.keys(dataByWeek).sort();
-
-                    for (const weekKeyStr of weekKeys) {
-                        const weekStart = new Date(parseInt(weekKeyStr));
-                        const weekEnd = new Date(weekStart);
-                        weekEnd.setDate(weekStart.getDate() + 6);
-
-                        const sheetTitle = `${(weekStart.getMonth() + 1).toString().padStart(2, '0')}${weekStart.getDate().toString().padStart(2, '0')}-${(weekEnd.getMonth() + 1).toString().padStart(2, '0')}${weekEnd.getDate().toString().padStart(2, '0')}`;
-                        const ws = workbookWriter.addWorksheet(sheetTitle);
-                        const weekData = dataByWeek[weekKeyStr];
-
-                        ws.getColumn(1).width = 14; 
-                        for (let i = 2; i <= 15; i += 2) {
-                            ws.getColumn(i).width = 12; 
-                            ws.getColumn(i + 1).width = 8; 
-                        }
-
-                        // A. 大標題
-                        ws.mergeCells('A1:O1');
-                        ws.getCell('A1').value = "三軍總醫院_醫療部護理科門診_工作分配表";
-                        ws.getCell('A1').alignment = alignCenter;
-                        ws.getCell('A1').font = titleFont;
-
-                        // B. 表頭
-                        ws.mergeCells('A2:A4');
-                        ws.getCell('A2').value = "班別";
-                        ws.getCell('A2').alignment = alignCenter;
-                        ws.getCell('A2').font = contentFont;
-                        ws.getCell('A2').border = fullBorder;
-
-                        const daysInWeek = Array(7).fill(0).map((_, i) => {
-                            const d = new Date(weekStart);
-                            d.setDate(weekStart.getDate() + i);
-                            d.setHours(0, 0, 0, 0);
-                            return d;
-                        });
-
-                        const dateColMap = {};
-                        let colIdx = 2;
-
-                        daysInWeek.forEach(d => {
-                            // 修正 2: 解決日期不正確的問題
-                            // 不要使用 toISOString()，因為它會轉換成 UTC 導致日期少一天 (GMT+8 -> UTC)
-                            // 改用本地時間的方法 getFullYear/getMonth/getDate
-                            const year = d.getFullYear();
-                            const month = (d.getMonth() + 1).toString().padStart(2, '0');
-                            const date = d.getDate().toString().padStart(2, '0');
-                            const dayStr = `${year}-${month}-${date}`;
-
-                            const wkStr = getChineseWeekday(d);
-                            
-                            // Row 2: 日期
-                            ws.mergeCells(2, colIdx, 2, colIdx + 1);
-                            ws.getCell(2, colIdx).value = dayStr;
-                            ws.getCell(2, colIdx).alignment = alignCenter;
-                            ws.getCell(2, colIdx).font = contentFont;
-
-                            // Row 3: 星期
-                            ws.mergeCells(3, colIdx, 3, colIdx + 1);
-                            ws.getCell(3, colIdx).value = wkStr;
-                            ws.getCell(3, colIdx).alignment = alignCenter;
-                            ws.getCell(3, colIdx).font = contentFont;
-
-                            // Row 4: 姓名 / 診次
-                            ws.getCell(4, colIdx).value = "姓名";
-                            ws.getCell(4, colIdx + 1).value = "診次";
-                            ws.getCell(4, colIdx).alignment = alignCenter;
-                            ws.getCell(4, colIdx + 1).alignment = alignCenter;
-                            ws.getCell(4, colIdx).font = contentFont;
-                            ws.getCell(4, colIdx + 1).font = contentFont;
-
-                            for (let r = 2; r <= 4; r++) {
-                                ws.getCell(r, colIdx).border = fullBorder;
-                                ws.getCell(r, colIdx + 1).border = fullBorder;
-                            }
-                            
-                            dateColMap[d.toDateString()] = colIdx;
-                            colIdx += 2;
-                        });
-                        
-                        // C. 內容填入
-                        let shifts = [...new Set(weekData.map(row => row.Shift))];
-                        shifts.sort();
-                        if (shifts.includes('R')) {
-                            shifts = ['R', ...shifts.filter(s => s !== 'R')];
-                        }
-                        
-                        const dv = {
-                            type: 'list',
-                            formulae: [`"${clinicList.join(',')}"`],
-                            allowBlank: true
-                        };
-                        
-                        let curRow = 5;
-
-                        for (const shift of shifts) {
-                            let maxRows = 1;
-                            const peopleByDay = {};
-
-                            daysInWeek.forEach(d => {
-                                const names = weekData.filter(r => r.Shift === shift && r.Date.toDateString() === d.toDateString())
-                                                      .map(r => r.Name);
-                                const sortedNames = sortNamesByStroke(names);
-                                peopleByDay[d.toDateString()] = sortedNames;
-                                maxRows = Math.max(maxRows, sortedNames.length);
-                            });
-
-                            const startRow = curRow;
-
-                            for (let i = 0; i < maxRows; i++) {
-                                daysInWeek.forEach(d => {
-                                    const ccol = dateColMap[d.toDateString()];
-                                    const names = peopleByDay[d.toDateString()] || [];
-                                    
-                                    const cellName = ws.getCell(curRow, ccol);
-                                    const cellClinic = ws.getCell(curRow, ccol + 1);
-
-                                    if (i < names.length) {
-                                        cellName.value = names[i];
-                                        cellClinic.dataValidation = dv; 
-                                    }
-
-                                    cellName.border = fullBorder;
-                                    cellClinic.border = fullBorder;
-                                    cellName.alignment = alignCenter;
-                                    cellClinic.alignment = alignCenter;
-                                    cellName.font = contentFont;
-                                    cellClinic.font = contentFont;
-                                });
-                                curRow++;
-                            }
-                            
-                            ws.mergeCells(startRow, 1, curRow - 1, 1);
-                            ws.getCell(startRow, 1).value = shift;
-                            ws.getCell(startRow, 1).alignment = alignCenter;
-                            ws.getCell(startRow, 1).font = contentFont;
-                            for (let r = startRow; r < curRow; r++) {
-                                ws.getCell(r, 1).border = fullBorder;
-                            }
-                        }
-                    }
-
-                    const buffer = await workbookWriter.xlsx.writeBuffer();
-                    const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
-                    saveAs(blob, "三軍總醫院_醫療部護理科門診_工作分配表_完成檔.xlsx");
-                    
-                    resolve();
-
-                } catch (error) {
-                    reject(error);
-                }
-            };
-            reader.readAsArrayBuffer(scheduleFile);
-        });
-    }
-
-    // ----------------------------------------------------
-    // 主程式碼與事件處理
-    // ----------------------------------------------------
-
-    document.addEventListener('DOMContentLoaded', () => {
-        const storedClinic = localStorage.getItem(LOCAL_STORAGE_KEY);
-        if (storedClinic) {
-            try {
-                const clinicList = JSON.parse(storedClinic);
-                updateClinicStatus(clinicList);
-            } catch (e) {
-                localStorage.removeItem(LOCAL_STORAGE_KEY);
-                updateClinicStatus(null);
-            }
-        } else {
-             updateClinicStatus(null);
-        }
-
-        document.getElementById('clinicFile').addEventListener('change', async (event) => {
-            const file = event.target.files[0];
-            if (!file) return;
-
-            displayMessage('note', '正在讀取並儲存診次設定...');
-            try {
-                const clinicList = await loadClinicList(file);
-                updateClinicStatus(clinicList);
-                displayMessage('success', '✔ 診次設定已成功更新並儲存。');
-            } catch (error) {
-                displayMessage('error', `診次檔案錯誤：${error.message}`);
-            }
-        });
-
-
-        document.getElementById('uploadForm').addEventListener('submit', async (event) => {
-            event.preventDefault();
+      // 工作表名稱：MMDD-MMDD
+      const sheetTitle = `${(weekStart.getMonth() + 1).toString().padStart(2, '0')}${weekStart.getDate().toString().padStart(2, '0')}-${(weekEnd.getMonth() + 1).toString().padStart(2, '0')}${weekEnd.getDate().toString().padStart(2, '0')}`;
+      const ws = workbookWriter.addWorksheet(sheetTitle);
+      const weekData = dataByWeek[weekKeyStr];
             
-            const scheduleFile = document.getElementById('scheduleFile').files[0];
-            const storedClinic = localStorage.getItem(LOCAL_STORAGE_KEY);
+      // ----------------------------------------------------
+      // 處理 [1], [2] (pageSetup & headerFooter)
+      // ----------------------------------------------------
 
-            if (!storedClinic) {
-                displayMessage('error', '尚未載入或儲存診次設定，請先完成步驟 1。');
-                return;
-            }
+   // =========================================================
+   // [1] 設定列印格式：A4, 橫向, 寬度強制單一頁面，高度自動延伸
+   // =========================================================
+   ws.pageSetup = {
+     paperSize: 9, // A4
+     orientation: 'landscape', // 橫向
+     fitToPage: true,
+     fitToWidth: 1, // 寬度塞滿一頁
+     fitToHeight: 0, // 高度不強制單頁，讓其根據內容自動分頁
+     margins: {
+       left: 0.25, right: 0.25,
+       top: 0.3, bottom: 0.3,
+       header: 0.1, footer: 0.1
+     },
+     horizontalCentered: true
+   };
 
-            if (!scheduleFile) {
-                displayMessage('error', '請上傳預轉換的區間班表。');
-                return;
-            }
-            
-            let clinicList;
-            try {
-                 clinicList = JSON.parse(storedClinic);
-                 if (clinicList.length === 0) throw new Error();
-            } catch(e) {
-                displayMessage('error', '診次設定資料損毀或為空，請重新上傳步驟 1 檔案。');
-                return;
-            }
-            
-            startProgressBar();
+   // =========================================================
+   // [2] 設定頁尾 (Footer) 及字型
+   // =========================================================
+   const longUnderline = "______________________________"; // 30 個底線 (或根據需要調整)
 
-            try {
-                await generateSchedule(scheduleFile, clinicList);
-                document.getElementById('progressFill').style.width = '100%';
-                setTimeout(() => {
-                    document.getElementById('progressContainer').style.display = 'none';
-                    document.getElementById('doneMessage').style.display = 'block';
-                }, 500);
+   // 設定頁尾中間欄位的內容
+   const centerContent = "請確認後簽名：芬____石____浩____榛____元____徐____慈____呂____昕____歡____陶____";
 
-            } catch (error) {
-                document.getElementById('progressContainer').style.display = 'none';
-                displayMessage('error', `轉換處理失敗：${error.message}`);
-            }
-        });
-        
-        function startProgressBar() {
-            let container = document.getElementById("progressContainer");
-            let bar = document.getElementById("progressFill");
-            let doneMsg = document.getElementById("doneMessage");
-            
-            bar.style.width = "0%";
-            doneMsg.style.display = "none";
-            container.style.display = "block";
-        }
+   const fontStyledFooter =
+        // 左側 (&L)：將字體大小設定為 12
+        `&L&"標楷體,12"列印日期: &"Times New Roman,12"&D &"Times New Roman,12"&T` +
+        // 中央 (&C)：將字體大小設定為 12
+        `&C&"標楷體,12"${centerContent}` +
+        // 右側 (&R)：將字體大小設定為 12
+        `&R&"標楷體,12"護理長：&"Times New Roman,12"${longUnderline}`;
+
+   ws.headerFooter = {
+     oddFooter: fontStyledFooter,
+     evenFooter: fontStyledFooter
+   };
+
+   // ----------------------------------------------------
+   // 頁面內容生成 (無變動) - 此處開始寫入資料
+   // ----------------------------------------------------
+
+   // ★ 修改欄寬 (A-V 共 22 欄)
+   ws.getColumn(1).width = 14;
+   for (let i = 2; i <= 22; i += 3) {
+   ws.getColumn(i).width = 10;// 姓名
+   ws.getColumn(i + 1).width = 8;// 上午診
+   ws.getColumn(i + 2).width = 8;// 下午診
+   }
+
+   // A. 大標題 (確保標題列是乾淨的第一列)
+   // ★ 修改合併範圍為 A1:V1
+   ws.mergeCells('A1:V1');
+   ws.getCell('A1').value = "三軍總醫院_醫療部護理科門診_工作分配表";
+   ws.getCell('A1').alignment = alignCenter;
+   ws.getCell('A1').font = titleFont;
+
+   // B. 表頭
+   ws.mergeCells('A2:A4');
+   ws.getCell('A2').value = "班別";
+   ws.getCell('A2').alignment = alignCenter;
+   ws.getCell('A2').font = contentFont;
+   ws.getCell('A2').border = fullBorder;
+
+   const daysInWeek = Array(7).fill(0).map((_, i) => {
+   const d = new Date(weekStart);
+   d.setDate(weekStart.getDate() + i);
+   d.setHours(0, 0, 0, 0);
+   return d;
+   });
+
+   const dateColMap = {};
+   let colIdx = 2;
+
+   daysInWeek.forEach(d => {
+   const year = d.getFullYear();
+   const month = (d.getMonth() + 1).toString().padStart(2, '0');
+   const date = d.getDate().toString().padStart(2, '0');
+   const dayStr = `${year}-${month}-${date}`;
+
+   const wkStr = getChineseWeekday(d);
+   
+   // Row 2: 日期
+   // ★ 修改合併範圍為 3 欄
+   ws.mergeCells(2, colIdx, 2, colIdx + 2);
+   ws.getCell(2, colIdx).value = dayStr;
+   ws.getCell(2, colIdx).alignment = alignCenter;
+   ws.getCell(2, colIdx).font = contentFont;
+
+   // Row 3: 星期
+   // ★ 修改合併範圍為 3 欄
+   ws.mergeCells(3, colIdx, 3, colIdx + 2);
+   ws.getCell(3, colIdx).value = wkStr;
+   ws.getCell(3, colIdx).alignment = alignCenter;
+   ws.getCell(3, colIdx).font = contentFont;
+
+   // Row 4: 姓名 / 上午診 / 下午診
+   ws.getCell(4, colIdx).value = "姓名";
+   ws.getCell(4, colIdx + 1).value = "上午診"; // 診次改為上午診
+   ws.getCell(4, colIdx + 2).value = "下午診"; // 新增下午診
+   
+   ws.getCell(4, colIdx).alignment = alignCenter;
+   ws.getCell(4, colIdx + 1).alignment = alignCenter;
+   ws.getCell(4, colIdx + 2).alignment = alignCenter; // 對齊
+   ws.getCell(4, colIdx).font = contentFont;
+   ws.getCell(4, colIdx + 1).font = contentFont;
+   ws.getCell(4, colIdx + 2).font = contentFont; // 字型
+
+   for (let r = 2; r <= 4; r++) {
+    ws.getCell(r, colIdx).border = fullBorder;
+    ws.getCell(r, colIdx + 1).border = fullBorder;
+    ws.getCell(r, colIdx + 2).border = fullBorder; // 邊框
+   }
+   
+   dateColMap[d.toDateString()] = colIdx;
+   // ★ colIdx 每次增加 3
+   colIdx += 3;
+   });
+  
+   // C. 內容填入
+   let shifts = [...new Set(weekData.map(row => row.Shift))];
+   shifts.sort();
+   if (shifts.includes('R')) {
+   shifts = ['R', ...shifts.filter(s => s !== 'R')];
+   }
+  
+   // 設定資料驗證 (診次下拉選單)
+   const dv = {
+   type: 'list',
+   formulae: [`"${clinicList.join(',')}"`],
+   allowBlank: true
+   };
+  
+   let curRow = 5;
+
+   for (const shift of shifts) {
+   let maxRows = 1;
+   const peopleByDay = {};
+
+   daysInWeek.forEach(d => {
+    const names = weekData.filter(r => r.Shift === shift && r.Date.toDateString() === d.toDateString())
+      .map(r => r.Name);
+    const sortedNames = sortNamesByStroke(names);
+    peopleByDay[d.toDateString()] = sortedNames;
+    maxRows = Math.max(maxRows, sortedNames.length);
+   });
+
+   const startRow = curRow;
+
+   for (let i = 0; i < maxRows; i++) {
+    daysInWeek.forEach(d => {
+    const ccol = dateColMap[d.toDateString()];
+    const names = peopleByDay[d.toDateString()] || [];
+    
+    const cellName = ws.getCell(curRow, ccol);
+    // ★ 拆分為上午診和下午診
+    const cellMorningClinic = ws.getCell(curRow, ccol + 1);
+    const cellAfternoonClinic = ws.getCell(curRow, ccol + 2);
+
+    if (i < names.length) {
+     cellName.value = names[i];
+     // ★ 僅在有值時才設定資料驗證
+     cellMorningClinic.dataValidation = dv;
+     cellAfternoonClinic.dataValidation = dv;
+    }
+
+    // 邊框與樣式
+    cellName.border = fullBorder;
+    cellMorningClinic.border = fullBorder;
+    cellAfternoonClinic.border = fullBorder;
+
+    cellName.alignment = alignCenter;
+    cellMorningClinic.alignment = alignCenter;
+    cellAfternoonClinic.alignment = alignCenter;
+    
+    cellName.font = contentFont;
+    cellMorningClinic.font = contentFont;
+    cellAfternoonClinic.font = contentFont;
     });
+    curRow++;
+   }
+   
+   // 班別合併儲存格
+   ws.mergeCells(startRow, 1, curRow - 1, 1);
+   ws.getCell(startRow, 1).value = shift;
+   ws.getCell(startRow, 1).alignment = alignCenter;
+   ws.getCell(startRow, 1).font = contentFont;
+   for (let r = startRow; r < curRow; r++) {
+    ws.getCell(r, 1).border = fullBorder;
+   }
+   }
+
+        // =========================================================
+        // [3] **修正位置：設定列高為 30 (方式一：迭代所有包含資料的列)**
+        // 此處執行 ws.eachRow，確保所有資料和合併儲存格已寫入工作表
+        // =========================================================
+        const targetRowHeight = 30;
+
+        // 遍歷工作表中所有已使用的行
+        ws.eachRow((row, rowNumber) => {
+            // 判斷條件：如果該行包含任何非空/非 undefined 的值，則設定其高度。
+            // 這確保了只有實際有內容的資料列會被設定高度。
+            // 由於標題和表頭也算有內容，它們也會被設定。
+            const hasContent = row.values.some(v => v !== undefined && v !== null && v !== '');
+
+            if (hasContent) {
+                row.height = targetRowHeight;
+            }
+        });
+    
+  } // End of week loop
+
+  // 寫入並下載檔案
+  const buffer = await workbookWriter.xlsx.writeBuffer();
+  const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+  saveAs(blob, "三軍總醫院_醫療部護理科門診_工作分配表_完成檔.xlsx");
+  
+  resolve();
+
+  } catch (error) {
+  reject(error);
+  }
+ };
+ reader.readAsArrayBuffer(scheduleFile);
+ });
+}
+
+ // ----------------------------------------------------
+ // 主程式碼與事件處理
+ // ----------------------------------------------------
+
+ document.addEventListener('DOMContentLoaded', () => {
+  const storedClinic = localStorage.getItem(LOCAL_STORAGE_KEY);
+  if (storedClinic) {
+   try {
+    const clinicList = JSON.parse(storedClinic);
+    updateClinicStatus(clinicList);
+   } catch (e) {
+    localStorage.removeItem(LOCAL_STORAGE_KEY);
+    updateClinicStatus(null);
+   }
+  } else {
+   updateClinicStatus(null);
+  }
+
+  document.getElementById('clinicFile').addEventListener('change', async (event) => {
+   const file = event.target.files[0];
+   if (!file) return;
+
+   displayMessage('note', '正在讀取並儲存診次設定...');
+   try {
+    const clinicList = await loadClinicList(file);
+    updateClinicStatus(clinicList);
+    displayMessage('success', '✔ 診次設定已成功更新並儲存。');
+   } catch (error) {
+    displayMessage('error', `診次檔案錯誤：${error.message}`);
+   }
+  });
+
+
+  document.getElementById('uploadForm').addEventListener('submit', async (event) => {
+   event.preventDefault();
+  
+   const scheduleFile = document.getElementById('scheduleFile').files[0];
+   const storedClinic = localStorage.getItem(LOCAL_STORAGE_KEY);
+
+   if (!storedClinic) {
+    displayMessage('error', '尚未載入或儲存診次設定，請先完成步驟 1。');
+    return;
+   }
+
+   if (!scheduleFile) {
+    displayMessage('error', '請上傳預轉換的區間班表 (步驟 2)。');
+    return;
+   }
+  
+   let clinicList;
+   try {
+    clinicList = JSON.parse(storedClinic);
+    if (clinicList.length === 0) throw new Error();
+   } catch(e) {
+    displayMessage('error', '診次設定資料損毀或為空，請重新上傳步驟 1 檔案。');
+    return;
+   }
+  
+   // 獲取選擇的模式
+   const mode = document.querySelector('input[name="extractionMode"]:checked').value;
+
+   startProgressBar();
+
+   try {
+    await generateSchedule(scheduleFile, clinicList, mode);
+    document.getElementById('progressFill').style.width = '100%';
+    setTimeout(() => {
+     document.getElementById('progressContainer').style.display = 'none';
+     document.getElementById('doneMessage').style.display = 'block';
+    }, 500);
+
+   } catch (error) {
+    document.getElementById('progressContainer').style.display = 'none';
+    displayMessage('error', `轉換處理失敗：${error.message}`);
+   }
+  });
+ 
+  function startProgressBar() {
+   let container = document.getElementById("progressContainer");
+   let bar = document.getElementById("progressFill");
+   let doneMsg = document.getElementById("doneMessage");
+  
+   bar.style.width = "0%";
+   doneMsg.style.display = "none";
+   container.style.display = "block";
+  }
+ });
 
 </script>
 
