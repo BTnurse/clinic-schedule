@@ -11,11 +11,11 @@
  <style>
   body{font-family:'微軟正黑體', sans-serif; background:#f4f7f6; padding:20px;}
   .container{max-width:850px; margin:auto; background:white; padding:30px; border-radius:10px;
-     box-shadow:0 4px 10px rgba(0,0,0,0.1);}
+       box-shadow:0 4px 10px rgba(0,0,0,0.1);}
   h1,h2{text-align:center; color:#003366;}
-  label{font-weight:bold; margin-top:10px; display:block;}
+  label{font-weight:bold; margin-top:20px; display:block;}
   input[type=file]{width:100%; padding:10px; border:1px solid #ccc; border-radius:6px; background:#eef0f3;}
-  button{margin-top:0px; width:100%; padding:12px; background:#0066cc; color:white;
+  button{margin-top:25px; width:100%; padding:12px; background:#0066cc; color:white;
     font-size:16px; border:none; border-radius:6px; cursor: pointer;}
   button:hover{background:#004c99;}
   .error{margin-top:15px; padding:10px; background:#ffe5e5; border-left:4px solid #cc0000; color:#990000;}
@@ -72,7 +72,7 @@
   <label>步驟 2：上傳預轉換的區間班表 (排班設定檔.xlsx)</label>
   <input type="file" id="scheduleFile" accept=".xlsx" required>
  
-  <label style="margin-top: 10px;">步驟 3：選擇分配表提取模式（擇一執行）</label>
+  <label style="margin-top: 30px;">步驟 3：選擇分配表提取模式（擇一執行）</label>
  
   <div class="mode-selection">
    <label for="mode_auto">
@@ -107,9 +107,24 @@
  // ----------------------------------------------------
  // 核心常數設定
  // ----------------------------------------------------
+ // 修改處：此清單順序將決定轉換後班表從上到下的顯示順序
  const VALID_SHIFTS = [
-  '8-12/1-5', '*8-12/1-5', '1-9', "1'-9'", "9-11'/13-15'",
-  '值N8-8(民)', '12-4/值4-8', '值D8-8(民)', "8'-12'/1'5'"
+  "*8-12/1-5", 
+  "8-12/1-5", 
+  "8'-12'/1'5'", 
+  "1-9", 
+  "1'-9'", 
+  "9-11'/13-15'", 
+  "9-11'", 
+  "8'-12'(休息日加班)", 
+  "8-12/1-5(國定假日加班)", 
+  "12/4值4-8", 
+  "值D8-8(民)", 
+  "值N8-8(民)",
+  "值D8-8(民)(國定假日加班)",
+  "值N8-8(民)(國定假日加班)",
+  "值D8-8(民)(休息日加班)",
+  "值N8-8(民)(休息日加班)"
  ];
  const REST_SHIFTS = ['補休', '休息日', '例假日', '國定假日', '空班', '特別休假', '公休', '公假',  '病假', '生理假', '事假', '家庭照顧假','喪假'];
  const LOCAL_STORAGE_KEY = 'clinic_list_data';
@@ -131,7 +146,6 @@
   if (!shift || ['nan', 'None', 'NaT', ''].includes(String(shift).trim())) {
    return null;
   }
-  // ★ MODIFICATION: 排除被解析為 Date 物件的資料 (滿足需求 3)
   if (shift instanceof Date && !isNaN(shift.getTime())) {
    return null;
   }
@@ -151,7 +165,6 @@
   area.innerHTML = `<div class="${type}">${content}</div>`;
  }
 
- // 判斷是否為日期格式的函數 (用於辨識表頭)
  function isDateLike(val) {
   const colStr = String(val).replace(/\n/g, '').trim();
   return (val instanceof Date && !isNaN(val)) ||
@@ -159,7 +172,6 @@
    /\d{1,2}[\/-]\d{1,2}/.test(colStr);
  }
 
- // 偵測預設年份
  function detectDefaultYear(rawData) {
   const strData = JSON.stringify(rawData);
   const matchAD = strData.match(/202[4-6]/);
@@ -171,7 +183,6 @@
   return new Date().getFullYear();
  }
 
- // 彈性解析日期
  function parseDateFlexible(val, defaultYear) {
   if (val instanceof Date) return val;
  
@@ -192,11 +203,7 @@
   return null;
  }
 
- // ----------------------------------------------------
- // 步驟 1：診次設定處理
- // ----------------------------------------------------
-
- function updateClinicStatus(clinicList) {
+ async function updateClinicStatus(clinicList) {
   const statusDiv = document.getElementById('clinicStatus');
   if (clinicList && clinicList.length > 0) {
    statusDiv.innerHTML = `<div class="success">✔ 已載入診次設定 (共 <strong>${clinicList.length}</strong> 項)</div>`;
@@ -237,10 +244,6 @@
   });
  }
 
- // ----------------------------------------------------
- // 步驟 2 & 3：核心轉換與生成 Excel (Modified)
- // ----------------------------------------------------
-
  async function generateSchedule(scheduleFile, clinicList, mode) {
   return new Promise((resolve, reject) => {
    const reader = new FileReader();
@@ -257,11 +260,9 @@
       throw new Error("排班檔案內容不足。");
      }
 
-     // 1. 自動尋找 Header 列與姓名欄位
      let headerRowIndex = -1;
      let nameColIndex = -1;
 
-     // 掃描前 10 列尋找包含 "中文姓名" 或 "姓名" 的列
      for (let r = 0; r < Math.min(rawData.length, 10); r++) {
       const row = rawData[r];
       if (!row) continue;
@@ -280,75 +281,55 @@
      }
 
      const defaultYear = detectDefaultYear(rawData);
-
-     // 真正的表頭從找到的該列開始
      const headerRow = rawData[headerRowIndex];
     
      let dateCols = [];
      const processedRows = [];
-     let dataRows; // 宣告 dataRows
-
-     // --- 模式專屬的欄位偵測與資料列範圍界定 ---
+     let dataRows;
 
      if (mode === 'auto') {
-      // 模式 A: 彈性/自動偵測 (月班表模式)
       let foundFirstDate = false;
       headerRow.forEach((col, index) => {
        const colStr = String(col).replace(/\n/g, '').trim();
        const isDate = isDateLike(col);
 
-       // 排除所有統計/備註/合計欄位
        if (colStr.includes('統計') || colStr.includes('備註') || colStr.includes('合計')) {
         return;
        }
 
-       // 只抓取姓名欄位之後的有效日期欄位
        if (index > nameColIndex) {
         if (isDate) {
          foundFirstDate = true;
          dateCols.push({ index: index, rawName: colStr, dateObj: col instanceof Date ? col : null });
         } else if (foundFirstDate) {
-         // 找到第一個日期後，又遇到非日期欄位 (防止中間混入統計欄)
          return;
         }
        }
       });
-     
-      // 數據從表頭下一列開始 (原邏輯)
       dataRows = rawData.slice(headerRowIndex + 1);
 
      } else if (mode === 'fixed') {
-      // 模式 B: 固定 H-N 鎖定 (週班表模式)
-      const MIN_COL_INDEX = 7; // H 欄 (索引從 0 開始)
-      const MAX_COL_INDEX = 13; // N 欄
+      const MIN_COL_INDEX = 7; 
+      const MAX_COL_INDEX = 13; 
 
       headerRow.forEach((col, index) => {
-       // 條件 1: 嚴格篩選欄位範圍 H (index 7) 到 N (index 13)
        if (index < MIN_COL_INDEX || index > MAX_COL_INDEX) {
         return;
        }
-      
        const colStr = String(col).replace(/\n/g, '').trim();
-      
-       // 條件 2: 排除所有統計/備註/合計欄位
        if (colStr.includes('統計') || colStr.includes('備註') || colStr.includes('合計')) {
         return;
        }
-
-       // 條件 3: 確認是日期欄位
        const isDate = isDateLike(col);
        if (isDate) {
         dateCols.push({ index: index, rawName: colStr, dateObj: col instanceof Date ? col : null });
        }
       });
-
-      // 鎖定抓取4-100列資料
       dataRows = rawData.slice(3, 100);
      }
 
      if (dateCols.length === 0) throw new Error(`未偵測到任何日期欄位，請確認您選擇的模式是否正確，或檔案內容有誤。`);
 
-     // 4. 數據熔化：只抓取日期欄位下方的班別數據
      dataRows.forEach(row => {
       const name = row[nameColIndex];
       if (!name || String(name).trim() === '') return;
@@ -368,7 +349,6 @@
       
        if (!dt || isNaN(dt.getTime())) return;
       
-       // 計算 WeekKey (該週的星期一)
        const day = dt.getDay();
        const diff = dt.getDate() - day + (day === 0 ? -6 : 1);
        const startOfWeek = new Date(dt);
@@ -389,7 +369,6 @@
 
      if (processedRows.length === 0) throw new Error("處理後無有效排班資料。");
     
-     // 依 WeekKey 分組 (實現每週一分頁)
      const dataByWeek = processedRows.reduce((acc, row) => {
       const key = row.WeekKey;
       if (!acc[key]) acc[key] = [];
@@ -397,7 +376,6 @@
       return acc;
      }, {});
 
-     // ---------------- 產生 Excel ----------------
      const workbookWriter = new ExcelJS.Workbook();
      const alignCenter = { horizontal: 'center', vertical: 'middle', wrapText: true };
      const cellBorder = { style: 'thin' };
@@ -407,234 +385,207 @@
 
      const weekKeys = Object.keys(dataByWeek).sort();
 
-     // 迴圈處理每一週，生成一個工作表
      for (const weekKeyStr of weekKeys) {
       const weekStart = new Date(parseInt(weekKeyStr));
       const weekEnd = new Date(weekStart);
       weekEnd.setDate(weekStart.getDate() + 6);
 
-      // 工作表名稱：MMDD-MMDD
       const sheetTitle = `${(weekStart.getMonth() + 1).toString().padStart(2, '0')}${weekStart.getDate().toString().padStart(2, '0')}-${(weekEnd.getMonth() + 1).toString().padStart(2, '0')}${weekEnd.getDate().toString().padStart(2, '0')}`;
       const ws = workbookWriter.addWorksheet(sheetTitle);
       const weekData = dataByWeek[weekKeyStr];
             
-      // ----------------------------------------------------
-      // 處理 [1], [2] (pageSetup & headerFooter)
-      // ----------------------------------------------------
+    ws.pageSetup = {
+      paperSize: 9, 
+      orientation: 'landscape', 
+      fitToPage: true,
+      fitToWidth: 1, 
+      fitToHeight: 0, 
+      margins: {
+        left: 0.25, right: 0.25,
+        top: 0.3, bottom: 0.3,
+        header: 0.1, footer: 0.1
+      },
+      horizontalCentered: true
+    };
 
-   // =========================================================
-   // [1] 設定列印格式：A4, 橫向, 寬度強制單一頁面，高度自動延伸
-   // =========================================================
-   ws.pageSetup = {
-     paperSize: 9, // A4
-     orientation: 'landscape', // 橫向
-     fitToPage: true,
-     fitToWidth: 1, // 寬度塞滿一頁
-     fitToHeight: 0, // 高度不強制單頁，讓其根據內容自動分頁
-     margins: {
-       left: 0.25, right: 0.25,
-       top: 0.3, bottom: 0.3,
-       header: 0.1, footer: 0.1
-     },
-     horizontalCentered: true
-   };
+    const longUnderline = "______________________________"; 
+    const centerContent = "請確認後簽名：芬____石____浩____榛____元____徐____慈____呂____昕____歡____陶____";
 
-   // =========================================================
-   // [2] 設定頁尾 (Footer) 及字型
-   // =========================================================
-   const longUnderline = "______________________________"; // 30 個底線 (或根據需要調整)
+    const fontStyledFooter =
+         `&L&"標楷體,12"列印日期: &"Times New Roman,12"&D &"Times New Roman,12"&T` +
+         `&C&"標楷體,12"${centerContent}` +
+         `&R&"標楷體,12"護理長：&"Times New Roman,12"${longUnderline}`;
 
-   // 設定頁尾中間欄位的內容
-   const centerContent = "請確認後簽名：芬____石____浩____榛____元____徐____慈____呂____昕____歡____陶____";
+    ws.headerFooter = {
+      oddFooter: fontStyledFooter,
+      evenFooter: fontStyledFooter
+    };
 
-   const fontStyledFooter =
-        // 左側 (&L)：將字體大小設定為 12
-        `&L&"標楷體,12"列印日期: &"Times New Roman,12"&D &"Times New Roman,12"&T` +
-        // 中央 (&C)：將字體大小設定為 12
-        `&C&"標楷體,12"${centerContent}` +
-        // 右側 (&R)：將字體大小設定為 12
-        `&R&"標楷體,12"護理長：&"Times New Roman,12"${longUnderline}`;
-
-   ws.headerFooter = {
-     oddFooter: fontStyledFooter,
-     evenFooter: fontStyledFooter
-   };
-
-   // ----------------------------------------------------
-   // 頁面內容生成 (無變動) - 此處開始寫入資料
-   // ----------------------------------------------------
-
-   // ★ 修改欄寬 (A-V 共 22 欄)
-   ws.getColumn(1).width = 14;
-   for (let i = 2; i <= 22; i += 3) {
-   ws.getColumn(i).width = 10;// 姓名
-   ws.getColumn(i + 1).width = 8;// 上午診
-   ws.getColumn(i + 2).width = 8;// 下午診
-   }
-
-   // A. 大標題 (確保標題列是乾淨的第一列)
-   // ★ 修改合併範圍為 A1:V1
-   ws.mergeCells('A1:V1');
-   ws.getCell('A1').value = "三軍總醫院_醫療部護理科門診_工作分配表";
-   ws.getCell('A1').alignment = alignCenter;
-   ws.getCell('A1').font = titleFont;
-
-   // B. 表頭
-   ws.mergeCells('A2:A4');
-   ws.getCell('A2').value = "班別";
-   ws.getCell('A2').alignment = alignCenter;
-   ws.getCell('A2').font = contentFont;
-   ws.getCell('A2').border = fullBorder;
-
-   const daysInWeek = Array(7).fill(0).map((_, i) => {
-   const d = new Date(weekStart);
-   d.setDate(weekStart.getDate() + i);
-   d.setHours(0, 0, 0, 0);
-   return d;
-   });
-
-   const dateColMap = {};
-   let colIdx = 2;
-
-   daysInWeek.forEach(d => {
-   const year = d.getFullYear();
-   const month = (d.getMonth() + 1).toString().padStart(2, '0');
-   const date = d.getDate().toString().padStart(2, '0');
-   const dayStr = `${year}-${month}-${date}`;
-
-   const wkStr = getChineseWeekday(d);
-   
-   // Row 2: 日期
-   // ★ 修改合併範圍為 3 欄
-   ws.mergeCells(2, colIdx, 2, colIdx + 2);
-   ws.getCell(2, colIdx).value = dayStr;
-   ws.getCell(2, colIdx).alignment = alignCenter;
-   ws.getCell(2, colIdx).font = contentFont;
-
-   // Row 3: 星期
-   // ★ 修改合併範圍為 3 欄
-   ws.mergeCells(3, colIdx, 3, colIdx + 2);
-   ws.getCell(3, colIdx).value = wkStr;
-   ws.getCell(3, colIdx).alignment = alignCenter;
-   ws.getCell(3, colIdx).font = contentFont;
-
-   // Row 4: 姓名 / 上午診 / 下午診
-   ws.getCell(4, colIdx).value = "姓名";
-   ws.getCell(4, colIdx + 1).value = "上午診"; // 診次改為上午診
-   ws.getCell(4, colIdx + 2).value = "下午診"; // 新增下午診
-   
-   ws.getCell(4, colIdx).alignment = alignCenter;
-   ws.getCell(4, colIdx + 1).alignment = alignCenter;
-   ws.getCell(4, colIdx + 2).alignment = alignCenter; // 對齊
-   ws.getCell(4, colIdx).font = contentFont;
-   ws.getCell(4, colIdx + 1).font = contentFont;
-   ws.getCell(4, colIdx + 2).font = contentFont; // 字型
-
-   for (let r = 2; r <= 4; r++) {
-    ws.getCell(r, colIdx).border = fullBorder;
-    ws.getCell(r, colIdx + 1).border = fullBorder;
-    ws.getCell(r, colIdx + 2).border = fullBorder; // 邊框
-   }
-   
-   dateColMap[d.toDateString()] = colIdx;
-   // ★ colIdx 每次增加 3
-   colIdx += 3;
-   });
-  
-   // C. 內容填入
-   let shifts = [...new Set(weekData.map(row => row.Shift))];
-   shifts.sort();
-   if (shifts.includes('R')) {
-   shifts = ['R', ...shifts.filter(s => s !== 'R')];
-   }
-  
-   // 設定資料驗證 (診次下拉選單)
-   const dv = {
-   type: 'list',
-   formulae: [`"${clinicList.join(',')}"`],
-   allowBlank: true
-   };
-  
-   let curRow = 5;
-
-   for (const shift of shifts) {
-   let maxRows = 1;
-   const peopleByDay = {};
-
-   daysInWeek.forEach(d => {
-    const names = weekData.filter(r => r.Shift === shift && r.Date.toDateString() === d.toDateString())
-      .map(r => r.Name);
-    const sortedNames = sortNamesByStroke(names);
-    peopleByDay[d.toDateString()] = sortedNames;
-    maxRows = Math.max(maxRows, sortedNames.length);
-   });
-
-   const startRow = curRow;
-
-   for (let i = 0; i < maxRows; i++) {
-    daysInWeek.forEach(d => {
-    const ccol = dateColMap[d.toDateString()];
-    const names = peopleByDay[d.toDateString()] || [];
-    
-    const cellName = ws.getCell(curRow, ccol);
-    // ★ 拆分為上午診和下午診
-    const cellMorningClinic = ws.getCell(curRow, ccol + 1);
-    const cellAfternoonClinic = ws.getCell(curRow, ccol + 2);
-
-    if (i < names.length) {
-     cellName.value = names[i];
-     // ★ 僅在有值時才設定資料驗證
-     cellMorningClinic.dataValidation = dv;
-     cellAfternoonClinic.dataValidation = dv;
+    ws.getColumn(1).width = 14;
+    for (let i = 2; i <= 22; i += 3) {
+    ws.getColumn(i).width = 10;
+    ws.getColumn(i + 1).width = 8;
+    ws.getColumn(i + 2).width = 8;
     }
 
-    // 邊框與樣式
-    cellName.border = fullBorder;
-    cellMorningClinic.border = fullBorder;
-    cellAfternoonClinic.border = fullBorder;
+    ws.mergeCells('A1:V1');
+    ws.getCell('A1').value = "三軍總醫院_醫療部護理科門診_工作分配表";
+    ws.getCell('A1').alignment = alignCenter;
+    ws.getCell('A1').font = titleFont;
 
-    cellName.alignment = alignCenter;
-    cellMorningClinic.alignment = alignCenter;
-    cellAfternoonClinic.alignment = alignCenter;
-    
-    cellName.font = contentFont;
-    cellMorningClinic.font = contentFont;
-    cellAfternoonClinic.font = contentFont;
+    ws.mergeCells('A2:A4');
+    ws.getCell('A2').value = "班別";
+    ws.getCell('A2').alignment = alignCenter;
+    ws.getCell('A2').font = contentFont;
+    ws.getCell('A2').border = fullBorder;
+
+    const daysInWeek = Array(7).fill(0).map((_, i) => {
+    const d = new Date(weekStart);
+    d.setDate(weekStart.getDate() + i);
+    d.setHours(0, 0, 0, 0);
+    return d;
     });
-    curRow++;
-   }
-   
-   // 班別合併儲存格
-   ws.mergeCells(startRow, 1, curRow - 1, 1);
-   ws.getCell(startRow, 1).value = shift;
-   ws.getCell(startRow, 1).alignment = alignCenter;
-   ws.getCell(startRow, 1).font = contentFont;
-   for (let r = startRow; r < curRow; r++) {
-    ws.getCell(r, 1).border = fullBorder;
-   }
-   }
 
-        // =========================================================
-        // [3] **修正位置：設定列高為 30 (方式一：迭代所有包含資料的列)**
-        // 此處執行 ws.eachRow，確保所有資料和合併儲存格已寫入工作表
-        // =========================================================
-        const targetRowHeight = 30;
+    const dateColMap = {};
+    let colIdx = 2;
 
-        // 遍歷工作表中所有已使用的行
-        ws.eachRow((row, rowNumber) => {
-            // 判斷條件：如果該行包含任何非空/非 undefined 的值，則設定其高度。
-            // 這確保了只有實際有內容的資料列會被設定高度。
-            // 由於標題和表頭也算有內容，它們也會被設定。
-            const hasContent = row.values.some(v => v !== undefined && v !== null && v !== '');
-
-            if (hasContent) {
-                row.height = targetRowHeight;
-            }
-        });
+    daysInWeek.forEach(d => {
+    const year = d.getFullYear();
+    const month = (d.getMonth() + 1).toString().padStart(2, '0');
+    const date = d.getDate().toString().padStart(2, '0');
+    const dayStr = `${year}-${month}-${date}`;
+    const wkStr = getChineseWeekday(d);
     
-  } // End of week loop
+    // 修改註解：確保「日期列」為標楷體
+    ws.mergeCells(2, colIdx, 2, colIdx + 2);
+    const dateCell = ws.getCell(2, colIdx);
+    dateCell.value = dayStr;
+    dateCell.alignment = alignCenter;
+    dateCell.font = contentFont; 
 
-  // 寫入並下載檔案
+    // 修改註解：確保「星期列」為標楷體
+    ws.mergeCells(3, colIdx, 3, colIdx + 2);
+    const wkCell = ws.getCell(3, colIdx);
+    wkCell.value = wkStr;
+    wkCell.alignment = alignCenter;
+    wkCell.font = contentFont;
+
+    // 修改註解：修正上午/下午診字體，並統一設定格式
+    const cellHeaderName = ws.getCell(4, colIdx);
+    const cellHeaderAM = ws.getCell(4, colIdx + 1);
+    const cellHeaderPM = ws.getCell(4, colIdx + 2);
+
+    cellHeaderName.value = "姓名";
+    cellHeaderAM.value = "上午診"; 
+    cellHeaderPM.value = "下午診"; 
+    
+    [cellHeaderName, cellHeaderAM, cellHeaderPM].forEach(cell => {
+      cell.alignment = alignCenter;
+      cell.font = contentFont; // 確保標楷體
+    });
+
+    for (let r = 2; r <= 4; r++) {
+     ws.getCell(r, colIdx).border = fullBorder;
+     ws.getCell(r, colIdx + 1).border = fullBorder;
+     ws.getCell(r, colIdx + 2).border = fullBorder; 
+    }
+    
+    dateColMap[d.toDateString()] = colIdx;
+    colIdx += 3;
+    });
+   
+    let shifts = [...new Set(weekData.map(row => row.Shift))];
+    
+    // ★ 修改處：核心排序邏輯
+    // 1. "*8-12/1-5" 絕對置頂
+    // 2. "R" 絕對置底
+    // 3. 其餘班別依照 VALID_SHIFTS 順序排列
+    shifts.sort((a, b) => {
+      // 處理置頂項目
+      if (a === "*8-12/1-5") return -1;
+      if (b === "*8-12/1-5") return 1;
+
+      // 處理置底項目 (R)
+      if (a === "R") return 1;
+      if (b === "R") return -1;
+
+      // 取得兩者在 VALID_SHIFTS 中的索引
+      let indexA = VALID_SHIFTS.indexOf(a);
+      let indexB = VALID_SHIFTS.indexOf(b);
+
+      // 如果班別不在 VALID_SHIFTS 清單中，則排在清單內容之後、R 之前
+      if (indexA === -1) indexA = 500;
+      if (indexB === -1) indexB = 500;
+      
+      return indexA - indexB;
+    });
+   
+    const dv = {
+    type: 'list',
+    formulae: [`"${clinicList.join(',')}"`],
+    allowBlank: true
+    };
+   
+    let curRow = 5;
+
+    for (const shift of shifts) {
+    let maxRows = 1;
+    const peopleByDay = {};
+
+    daysInWeek.forEach(d => {
+     const names = weekData.filter(r => r.Shift === shift && r.Date.toDateString() === d.toDateString())
+       .map(r => r.Name);
+     const sortedNames = sortNamesByStroke(names);
+     peopleByDay[d.toDateString()] = sortedNames;
+     maxRows = Math.max(maxRows, sortedNames.length);
+    });
+
+    const startRow = curRow;
+
+    for (let i = 0; i < maxRows; i++) {
+     daysInWeek.forEach(d => {
+     const ccol = dateColMap[d.toDateString()];
+     const names = peopleByDay[d.toDateString()] || [];
+     
+     const cellName = ws.getCell(curRow, ccol);
+     const cellMorningClinic = ws.getCell(curRow, ccol + 1);
+     const cellAfternoonClinic = ws.getCell(curRow, ccol + 2);
+
+     if (i < names.length) {
+      cellName.value = names[i];
+      cellMorningClinic.dataValidation = dv;
+      cellAfternoonClinic.dataValidation = dv;
+     }
+
+     [cellName, cellMorningClinic, cellAfternoonClinic].forEach(cell => {
+        cell.border = fullBorder;
+        cell.alignment = alignCenter;
+        cell.font = contentFont; // 確保內容區字體為標楷體
+     });
+     });
+     curRow++;
+    }
+    
+    ws.mergeCells(startRow, 1, curRow - 1, 1);
+    const cellShiftName = ws.getCell(startRow, 1);
+    cellShiftName.value = shift;
+    cellShiftName.alignment = alignCenter;
+    cellShiftName.font = contentFont; 
+    for (let r = startRow; r < curRow; r++) {
+     ws.getCell(r, 1).border = fullBorder;
+    }
+    }
+
+    const targetRowHeight = 30;
+    ws.eachRow((row, rowNumber) => {
+        const hasContent = row.values.some(v => v !== undefined && v !== null && v !== '');
+        if (hasContent) {
+            row.height = targetRowHeight;
+        }
+    });
+     
+  } 
+
   const buffer = await workbookWriter.xlsx.writeBuffer();
   const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
   saveAs(blob, "三軍總醫院_醫療部護理科門診_工作分配表_完成檔.xlsx");
@@ -707,7 +658,6 @@
     return;
    }
   
-   // 獲取選擇的模式
    const mode = document.querySelector('input[name="extractionMode"]:checked').value;
 
    startProgressBar();
@@ -741,7 +691,3 @@
 
 </body>
 </html>
-
-
-
-
